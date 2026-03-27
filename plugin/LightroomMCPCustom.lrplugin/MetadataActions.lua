@@ -61,21 +61,31 @@ end
 
 local function buildKeywordMap(catalog)
     local map = {}
-    local allKeywords = catalog:getKeywords() or {}
-    for _, keyword in ipairs(allKeywords) do
+    local function addKeyword(keyword)
         local okPath, path = pcall(function()
             return keywordPathFor(keyword)
         end)
         if okPath and path then
             map[path:lower()] = keyword
         end
-
         local okName, name = pcall(function()
             return keyword:getName()
         end)
         if okName and name and not map[name:lower()] then
             map[name:lower()] = keyword
         end
+        local okChildren, children = pcall(function()
+            return keyword:getChildren()
+        end)
+        if okChildren and children then
+            for _, child in ipairs(children) do
+                addKeyword(child)
+            end
+        end
+    end
+    local allKeywords = catalog:getKeywords() or {}
+    for _, keyword in ipairs(allKeywords) do
+        addKeyword(keyword)
     end
     return map
 end
@@ -121,6 +131,49 @@ function MetadataActions.setCaption(params)
         error("caption is required")
     end
     return applyRawMetadata(params, "caption", tostring(params.caption))
+end
+
+-- Uses getFormattedMetadata("keywordTags") instead of getRawMetadata("keywords")
+-- because the latter silently returns nil inside both withReadAccessDo and outside it.
+function MetadataActions.getKeywords(params)
+    local catalog = ActionUtils.getCatalog()
+    local photos = ensurePhotos(params)
+    local results = {}
+
+    catalog:withReadAccessDo(function()
+        for _, photo in ipairs(photos) do
+            local kwList = {}
+            local tagStr = photo:getFormattedMetadata("keywordTags")
+            if tagStr and tagStr ~= "" then
+                for tag in tagStr:gmatch("[^,]+") do
+                    local name = tag:match("^%s*(.-)%s*$")
+                    if name and name ~= "" then
+                        kwList[#kwList + 1] = name
+                    end
+                end
+            end
+            local exportStr = photo:getFormattedMetadata("keywordTagsForExport") or ""
+            local exportList = {}
+            if exportStr ~= "" then
+                for tag in exportStr:gmatch("[^,]+") do
+                    local name = tag:match("^%s*(.-)%s*$")
+                    if name and name ~= "" then
+                        exportList[#exportList + 1] = name
+                    end
+                end
+            end
+            results[#results + 1] = {
+                local_id = photo.localIdentifier,
+                keywords = kwList,
+                keywords_for_export = exportList,
+            }
+        end
+    end)
+
+    return {
+        photo_count = #photos,
+        photos = results,
+    }
 end
 
 function MetadataActions.addKeywords(params)
