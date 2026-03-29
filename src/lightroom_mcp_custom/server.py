@@ -259,6 +259,63 @@ async def find_photo_by_path(path: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+async def search_photos(
+    keyword: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    rating_min: int | None = None,
+    rating_max: int | None = None,
+    pick_status: int | None = None,
+    label: str | None = None,
+    camera_model: str | None = None,
+    limit: int = 20,
+    sort: str = "newest",
+) -> dict[str, Any]:
+    """Search photos in the catalog by filters. All filters are optional and combinable.
+
+    Args:
+        keyword: Filter by keyword name (exact match, case-insensitive).
+        date_from: Start date inclusive (YYYY-MM-DD).
+        date_to: End date inclusive (YYYY-MM-DD).
+        rating_min: Minimum star rating (0-5).
+        rating_max: Maximum star rating (0-5).
+        pick_status: -1 (rejected), 0 (unflagged), or 1 (flagged/picked).
+        label: Color label (red, yellow, green, blue, purple).
+        camera_model: Camera model substring match (case-insensitive).
+        limit: Max results to return (default 20, max 100).
+        sort: "newest" (default) or "oldest".
+    """
+    import re
+
+    payload: dict[str, Any] = {}
+    if keyword:
+        payload["keyword"] = keyword
+    if date_from:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_from):
+            raise ValueError("date_from must be YYYY-MM-DD format")
+        payload["date_from"] = date_from
+    if date_to:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_to):
+            raise ValueError("date_to must be YYYY-MM-DD format")
+        payload["date_to"] = date_to
+    if rating_min is not None:
+        payload["rating_min"] = validate_rating(rating_min)
+    if rating_max is not None:
+        payload["rating_max"] = validate_rating(rating_max)
+    if pick_status is not None:
+        payload["pick_status"] = validate_pick_status(pick_status)
+    if label:
+        payload["label"] = label
+    if camera_model:
+        payload["camera_model"] = camera_model
+    payload["limit"] = min(max(int(limit), 1), 100)
+    if sort not in ("newest", "oldest"):
+        raise ValueError("sort must be 'newest' or 'oldest'")
+    payload["sort"] = sort
+    return await _call("catalog.search_photos", payload, timeout_s=60.0)
+
+
+@mcp.tool()
 async def get_selected_photo_files(limit: int = 200) -> dict[str, Any]:
     """List selected Lightroom photos with direct file-inspection details."""
     response = await get_selected_photos(limit=limit)

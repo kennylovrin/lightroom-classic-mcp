@@ -56,6 +56,7 @@ end)
 register("catalog.get_selected_photos", CatalogActions.getSelectedPhotos)
 register("catalog.get_active_photo", CatalogActions.getActivePhoto)
 register("catalog.find_photo_by_path", CatalogActions.findPhotoByPath)
+register("catalog.search_photos", CatalogActions.searchPhotos)
 
 register("develop.get_settings", DevelopActions.getSettings)
 register("develop.apply_settings", DevelopActions.applySettings)
