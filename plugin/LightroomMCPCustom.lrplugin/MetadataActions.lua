@@ -29,22 +29,6 @@ local function applyRawMetadata(params, key, value)
     }
 end
 
-local function keywordPathFor(keyword)
-    local names = {}
-    local node = keyword
-    while node do
-        names[#names + 1] = node:getName()
-        node = node:getParent()
-    end
-
-    local out = {}
-    for i = #names, 1, -1 do
-        out[#out + 1] = names[i]
-    end
-
-    return table.concat(out, " > ")
-end
-
 local function ensureKeywordPath(catalog, keywordPath)
     local parts = ActionUtils.splitKeywordPath(keywordPath)
     if #parts == 0 then
@@ -57,27 +41,6 @@ local function ensureKeywordPath(catalog, keywordPath)
     end
 
     return parent
-end
-
-local function buildKeywordMap(catalog)
-    local map = {}
-    local allKeywords = catalog:getKeywords() or {}
-    for _, keyword in ipairs(allKeywords) do
-        local okPath, path = pcall(function()
-            return keywordPathFor(keyword)
-        end)
-        if okPath and path then
-            map[path:lower()] = keyword
-        end
-
-        local okName, name = pcall(function()
-            return keyword:getName()
-        end)
-        if okName and name and not map[name:lower()] then
-            map[name:lower()] = keyword
-        end
-    end
-    return map
 end
 
 function MetadataActions.setRating(params)
@@ -161,13 +124,50 @@ function MetadataActions.removeKeywords(params)
     local removed = 0
 
     catalog:withWriteAccessDo("MCP Remove Keywords", function()
-        local keywordMap = buildKeywordMap(catalog)
         for _, requested in ipairs(params.keywords) do
-            local key = tostring(requested):lower()
-            local keyword = keywordMap[key]
-            if keyword then
+            local req = tostring(requested)
+            local matches = {}
+
+            local key = req:lower()
+            local function collectByName(keywords)
+                for _, kw in ipairs(keywords) do
+                    if kw:getName():lower() == key then
+                        matches[#matches + 1] = kw
+                    end
+                    local children = kw:getChildren()
+                    if children then
+                        collectByName(children)
+                    end
+                end
+            end
+
+            if req:find(">") then
+                -- Walk the path to find the specific keyword
+                local parts = ActionUtils.splitKeywordPath(req)
+                local current = catalog:getKeywords() or {}
+                local found = nil
+                for _, part in ipairs(parts) do
+                    found = nil
+                    local partLower = part:lower()
+                    for _, kw in ipairs(current) do
+                        if kw:getName():lower() == partLower then
+                            found = kw
+                            current = kw:getChildren() or {}
+                            break
+                        end
+                    end
+                    if not found then break end
+                end
+                if found then
+                    matches[#matches + 1] = found
+                end
+            else
+                collectByName(catalog:getKeywords() or {})
+            end
+
+            for _, kw in ipairs(matches) do
                 for _, photo in ipairs(photos) do
-                    photo:removeKeyword(keyword)
+                    photo:removeKeyword(kw)
                     removed = removed + 1
                 end
             end
