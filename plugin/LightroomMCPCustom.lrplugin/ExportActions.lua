@@ -26,6 +26,10 @@ function ExportActions.exportPhotos(params)
     -- Create destination directory if needed
     LrFileUtils.createAllDirectories(destination)
 
+    local maxWidth = tonumber(params.max_width)
+    local maxHeight = tonumber(params.max_height)
+    local doConstrain = (maxWidth ~= nil) or (maxHeight ~= nil)
+
     local exportSettings = {
         LR_export_destinationType = "specificFolder",
         LR_export_destinationPathPrefix = destination,
@@ -33,7 +37,11 @@ function ExportActions.exportPhotos(params)
         LR_format = "JPEG",
         LR_jpeg_quality = quality / 100,
         LR_jpeg_useLimitSize = false,
-        LR_size_doConstrain = false,
+        LR_size_doConstrain = doConstrain,
+        LR_size_doNotEnlarge = true,
+        LR_size_maxWidth = maxWidth or 65535,
+        LR_size_maxHeight = maxHeight or 65535,
+        LR_size_resizeType = "wh",
         LR_export_colorSpace = "sRGB",
         LR_export_bitDepth = 8,
         LR_collisionHandling = "overwrite",

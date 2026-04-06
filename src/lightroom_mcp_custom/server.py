@@ -915,12 +915,18 @@ async def export_photos(
     destination: str,
     local_ids: list[int] | None = None,
     quality: int = 85,
+    max_width: int | None = None,
+    max_height: int | None = None,
 ) -> dict[str, Any]:
     """Export photos as JPG to a destination folder.
 
     Exports selected photos (or specific local_ids) with all develop
     edits applied as sRGB JPEG files to the given folder path.
     Creates the folder if it doesn't exist.
+
+    Optionally constrain the output size with max_width and/or max_height
+    (in pixels). If both are set, the image fits within that box while
+    preserving aspect ratio. If neither is set, exports at full size.
     """
     if not destination:
         raise ValueError("destination folder path is required")
@@ -931,6 +937,14 @@ async def export_photos(
     }
     if ids:
         payload["local_ids"] = ids
+    if max_width is not None:
+        if max_width < 1:
+            raise ValueError("max_width must be a positive integer")
+        payload["max_width"] = max_width
+    if max_height is not None:
+        if max_height < 1:
+            raise ValueError("max_height must be a positive integer")
+        payload["max_height"] = max_height
     return await _call("catalog.export_photos", payload, timeout_s=300.0)
 
 
