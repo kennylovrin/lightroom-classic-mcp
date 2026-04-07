@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from lightroom_mcp_custom.validators import (
+    validate_batch_metadata_entries,
     validate_develop_settings,
     validate_local_ids,
     validate_pick_status,
@@ -52,6 +53,60 @@ class ValidatorTests(unittest.TestCase):
         result = validate_develop_settings({"ToneCurvePV2012": curve}, strict=True)
         self.assertEqual(result.sanitized["ToneCurvePV2012"], curve)
         self.assertTrue(result.warnings)
+
+
+class BatchMetadataValidatorTests(unittest.TestCase):
+    def test_valid_entry_with_both(self) -> None:
+        entries = [{"local_ids": [1, 2], "caption": "Hello", "keywords": ["a", "b"]}]
+        result = validate_batch_metadata_entries(entries)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["local_ids"], [1, 2])
+        self.assertEqual(result[0]["caption"], "Hello")
+        self.assertEqual(result[0]["keywords"], ["a", "b"])
+
+    def test_valid_entry_caption_only(self) -> None:
+        entries = [{"local_ids": [1], "caption": "Hello"}]
+        result = validate_batch_metadata_entries(entries)
+        self.assertEqual(len(result), 1)
+        self.assertNotIn("keywords", result[0])
+
+    def test_valid_entry_keywords_only(self) -> None:
+        entries = [{"local_ids": [1], "keywords": ["tag"]}]
+        result = validate_batch_metadata_entries(entries)
+        self.assertEqual(len(result), 1)
+        self.assertNotIn("caption", result[0])
+
+    def test_empty_entries_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([])
+
+    def test_not_a_list_raises(self) -> None:
+        with self.assertRaises(TypeError):
+            validate_batch_metadata_entries("bad")
+
+    def test_missing_local_ids_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"caption": "Hello"}])
+
+    def test_empty_local_ids_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"local_ids": [], "caption": "Hello"}])
+
+    def test_no_caption_or_keywords_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"local_ids": [1]}])
+
+    def test_empty_keywords_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"local_ids": [1], "keywords": []}])
+
+    def test_invalid_local_id_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"local_ids": [0], "caption": "Hello"}])
+
+    def test_boolean_local_id_raises(self) -> None:
+        with self.assertRaises(TypeError):
+            validate_batch_metadata_entries([{"local_ids": [True], "caption": "Hello"}])
 
 
 if __name__ == "__main__":
