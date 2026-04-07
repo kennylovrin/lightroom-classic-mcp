@@ -162,7 +162,8 @@ def validate_batch_metadata_entries(
             raise ValueError(f"entry {i}: local_ids must be a non-empty list")
 
         ids = validate_local_ids(raw_ids)
-        assert ids is not None  # validate_local_ids returns list when given list
+        if ids is None:
+            raise ValueError(f"entry {i}: local_ids must be a non-empty list")
 
         caption = entry.get("caption")
         keywords = entry.get("keywords")

@@ -108,6 +108,22 @@ class BatchMetadataValidatorTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             validate_batch_metadata_entries([{"local_ids": [True], "caption": "Hello"}])
 
+    def test_entry_not_a_dict_raises(self) -> None:
+        with self.assertRaises(TypeError):
+            validate_batch_metadata_entries(["not a dict"])
+
+    def test_invalid_second_entry_raises(self) -> None:
+        entries = [
+            {"local_ids": [1], "caption": "ok"},
+            {"local_ids": [2]},  # missing caption and keywords
+        ]
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries(entries)
+
+    def test_keywords_non_list_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_batch_metadata_entries([{"local_ids": [1], "keywords": "flat string"}])
+
 
 if __name__ == "__main__":
     unittest.main()
