@@ -216,7 +216,34 @@ function MetadataActions.batchSetMetadata(params)
     -- Phase 2: single write transaction for all resolved entries.
     -- Entries not in resolved{} (failed or skipped in Phase 1) already have
     -- their result recorded and are silently skipped here.
+    -- Skip the transaction entirely if nothing to write (empty withWriteAccessDo
+    -- triggers an assertion error in Lightroom).
+    if next(resolved) == nil then
+        return {
+            requested = #params.entries,
+            succeeded = 0,
+            failed = failed,
+            stop_on_error = stopOnError,
+            results = results,
+        }
+    end
+
     catalog:withWriteAccessDo("MCP Batch Set Metadata", function()
+        -- Pre-resolve all unique keyword paths once. Calling ensureKeywordPath
+        -- (catalog:createKeyword) repeatedly for the same path within a single
+        -- transaction can silently fail to return the keyword on subsequent calls.
+        local keywordCache = {}
+        for i, entry in ipairs(params.entries) do
+            if resolved[i] and entry.keywords and type(entry.keywords) == "table" then
+                for _, keywordPath in ipairs(entry.keywords) do
+                    local path = tostring(keywordPath)
+                    if keywordCache[path] == nil then
+                        keywordCache[path] = ensureKeywordPath(catalog, path) or false
+                    end
+                end
+            end
+        end
+
         for i, entry in ipairs(params.entries) do
             if resolved[i] then
                 local photos = resolved[i]
@@ -229,9 +256,7 @@ function MetadataActions.batchSetMetadata(params)
 
                 if entry.keywords and type(entry.keywords) == "table" then
                     for _, keywordPath in ipairs(entry.keywords) do
-                        -- Note: ensureKeywordPath calls catalog:createKeyword inside the write
-                        -- transaction. This matches the existing addKeywords handler pattern.
-                        local kw = ensureKeywordPath(catalog, tostring(keywordPath))
+                        local kw = keywordCache[tostring(keywordPath)]
                         if kw then
                             for _, photo in ipairs(photos) do
                                 photo:addKeyword(kw)
