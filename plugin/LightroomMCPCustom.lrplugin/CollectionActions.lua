@@ -1,24 +1,13 @@
-local LrTasks = import "LrTasks"
-
 local ActionUtils = require "ActionUtils"
 
 local CollectionActions = {}
 
 local function collectionToSummary(collection)
-    local ok, result = pcall(function()
-        return {
-            local_id = collection.localIdentifier,
-            name = collection:getName(),
-            is_smart = collection:isSmartCollection(),
-            photo_count = collection:getPhotos() and #collection:getPhotos() or 0,
-        }
-    end)
-    if ok then
-        return result
-    end
     return {
         local_id = collection.localIdentifier,
-        name = "(error reading collection)",
+        name = collection:getName(),
+        is_smart = collection:isSmartCollection(),
+        photo_count = #collection:getPhotos(),
     }
 end
 
@@ -30,22 +19,16 @@ local function collectChildCollections(parent, depth)
 
     local out = {}
 
-    local okCollections, collections = pcall(function()
-        return parent:getChildCollections()
-    end)
-    if okCollections and collections then
-        for _, collection in ipairs(collections) do
-            local summary = collectionToSummary(collection)
-            summary.type = "collection"
-            summary.depth = depth
-            out[#out + 1] = summary
-        end
+    local collections = parent:getChildCollections()
+    for _, collection in ipairs(collections) do
+        local summary = collectionToSummary(collection)
+        summary.type = "collection"
+        summary.depth = depth
+        out[#out + 1] = summary
     end
 
-    local okSets, sets = pcall(function()
-        return parent:getChildCollectionSets()
-    end)
-    if okSets and sets then
+    local sets = parent:getChildCollectionSets()
+    if sets then
         for _, collectionSet in ipairs(sets) do
             local setEntry = {
                 local_id = collectionSet.localIdentifier,
@@ -166,6 +149,117 @@ function CollectionActions.removeFromCollection(params)
     return {
         collection_id = tonumber(params.collection_id),
         removed = removed,
+    }
+end
+
+function CollectionActions.createSmartCollection(params)
+    if not params or type(params.name) ~= "string" or params.name == "" then
+        error("name is required")
+    end
+    if not params.rules or type(params.rules) ~= "table" or #params.rules == 0 then
+        error("rules are required (array of search criteria)")
+    end
+
+    local catalog = ActionUtils.getCatalog()
+    local collection = nil
+
+    local searchDesc = {
+        combine = params.combine or "intersect",
+    }
+    for _, rule in ipairs(params.rules) do
+        searchDesc[#searchDesc + 1] = rule
+    end
+
+    catalog:withWriteAccessDo("MCP Create Smart Collection", function()
+        local parent = nil
+        if params.parent_id then
+            local parentId = tonumber(params.parent_id)
+            if parentId then
+                parent = catalog:getCollectionByLocalIdentifier(parentId)
+            end
+        end
+
+        collection = catalog:createSmartCollection(params.name, searchDesc, parent, true)
+    end)
+
+    if not collection then
+        error("Failed to create smart collection")
+    end
+
+    return {
+        created = true,
+        collection = collectionToSummary(collection),
+    }
+end
+
+function CollectionActions.getSmartCollectionRules(params)
+    if not params or not params.collection_id then
+        error("collection_id is required")
+    end
+
+    local catalog = ActionUtils.getCatalog()
+    local result = nil
+
+    catalog:withReadAccessDo(function()
+        local collectionId = tonumber(params.collection_id)
+        local collection = catalog:getCollectionByLocalIdentifier(collectionId)
+        if not collection then
+            error("Collection not found: " .. tostring(collectionId))
+        end
+        if not collection:isSmartCollection() then
+            error("Collection " .. tostring(collectionId) .. " is not a smart collection")
+        end
+
+        local searchDesc = collection:getSearchDescription()
+        local rules = {}
+        for i, rule in ipairs(searchDesc) do
+            rules[i] = rule
+        end
+
+        result = {
+            collection_id = collectionId,
+            name = collection:getName(),
+            combine = searchDesc.combine or "intersect",
+            rules = rules,
+        }
+    end)
+
+    return result
+end
+
+function CollectionActions.updateSmartCollection(params)
+    if not params or not params.collection_id then
+        error("collection_id is required")
+    end
+    if not params.rules or type(params.rules) ~= "table" or #params.rules == 0 then
+        error("rules are required (array of search criteria)")
+    end
+
+    local catalog = ActionUtils.getCatalog()
+
+    local searchDesc = {
+        combine = params.combine or "intersect",
+    }
+    for _, rule in ipairs(params.rules) do
+        searchDesc[#searchDesc + 1] = rule
+    end
+
+    catalog:withWriteAccessDo("MCP Update Smart Collection", function()
+        local collectionId = tonumber(params.collection_id)
+        local collection = catalog:getCollectionByLocalIdentifier(collectionId)
+        if not collection then
+            error("Collection not found: " .. tostring(collectionId))
+        end
+        if not collection:isSmartCollection() then
+            error("Collection " .. tostring(collectionId) .. " is not a smart collection")
+        end
+
+        collection:setSearchDescription(searchDesc)
+    end)
+
+    return {
+        collection_id = tonumber(params.collection_id),
+        updated = true,
     }
 end
 
