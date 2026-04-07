@@ -11,6 +11,7 @@ local SocketBridge = {}
 
 local state = {
     running = false,
+    shuttingDown = false,
     senderSocket = nil,
     receiverSocket = nil,
     senderPort = nil,
@@ -21,7 +22,7 @@ local state = {
     receiveBuffer = "",
     sessionId = nil,
     startedAt = nil,
-    needsRestart = false,  -- NEW: Flag for restart needed
+    needsRestart = false,
 }
 
 local PORT_FILE = "/tmp/lightroom_mcp_custom_ports.json"
@@ -232,28 +233,13 @@ local function processChunk(chunk, sourceSocket)
     end
 end
 
--- NEW: Deferred restart helper
 local function scheduleRestart()
-    if state.needsRestart then
-        return  -- Already scheduled
+    if state.needsRestart or state.shuttingDown then
+        return
     end
 
     state.needsRestart = true
-    Logger.info("Scheduling bridge restart...")
-
-    LrTasks.startAsyncTask(function()
-        LrTasks.sleep(1.0)  -- Brief delay to allow cleanup
-
-        if not state.needsRestart then
-            return  -- Cancelled
-        end
-
-        Logger.info("Executing deferred bridge restart")
-        SocketBridge.stop()
-        LrTasks.sleep(0.5)
-        SocketBridge.start()
-        state.needsRestart = false
-    end)
+    Logger.info("Restart requested, main loop will handle it")
 end
 
 function SocketBridge.start()
@@ -263,12 +249,13 @@ function SocketBridge.start()
     end
 
     state.running = true
+    state.shuttingDown = false
     state.receiveBuffer = ""
     state.senderPort = nil
     state.receiverPort = nil
     state.senderConnected = false
     state.receiverConnected = false
-    state.needsRestart = false  -- Clear restart flag
+    state.needsRestart = false
     state.startedAt = os.time()
     math.randomseed(state.startedAt)
     state.sessionId = tostring(state.startedAt) .. "-" .. tostring(math.random(100000, 999999))
@@ -277,7 +264,16 @@ function SocketBridge.start()
     Logger.info("Starting Lightroom MCP socket bridge")
 
     LrTasks.startAsyncTask(function()
+        local restartAfter = false
+
         LrFunctionContext.callWithContext("LightroomMCPCustomBridge", function(context)
+            context:addCleanupHandler(function()
+                cleanupPortFile()
+                state.running = false
+                state.shuttingDown = true
+                Logger.info("Bridge context cleanup handler fired")
+            end)
+
             state.senderSocket = LrSocket.bind {
                 functionContext = context,
                 plugin = _PLUGIN,
@@ -298,17 +294,17 @@ function SocketBridge.start()
                 end,
 
                 onClosed = function(socket)
+                    if state.shuttingDown then return end
                     state.senderConnected = false
                     state.senderConnectedAt = nil
                     Logger.warn("Sender socket closed")
-
-                    -- FIXED: Schedule full restart instead of reconnect
                     if state.running then
                         scheduleRestart()
                     end
                 end,
 
                 onError = function(socket, err)
+                    if state.shuttingDown then return end
                     if err ~= "timeout" then
                         Logger.error("Sender socket error: " .. tostring(err))
                         if state.running then
@@ -316,7 +312,6 @@ function SocketBridge.start()
                         end
                     else
                         Logger.debug("Sender socket timeout")
-                        -- Timeout means no client connected yet; keep listening.
                         if state.running then
                             socket:reconnect()
                         end
@@ -343,22 +338,22 @@ function SocketBridge.start()
                 end,
 
                 onMessage = function(socketObj, message)
+                    if state.shuttingDown then return end
                     Logger.debug("Receiver socket message chunk length: " .. tostring(#(message or "")))
                     processChunk(message, socketObj)
                 end,
 
                 onClosed = function(socket)
+                    if state.shuttingDown then return end
                     state.receiverConnected = false
                     Logger.warn("Receiver socket closed")
-
-                    -- Schedule full restart instead of reconnect (reconnect
-                    -- alone does not reliably re-establish both sockets).
                     if state.running then
                         scheduleRestart()
                     end
                 end,
 
                 onError = function(socket, err)
+                    if state.shuttingDown then return end
                     if err ~= "timeout" then
                         Logger.error("Receiver socket error: " .. tostring(err))
                         if state.running then
@@ -366,7 +361,6 @@ function SocketBridge.start()
                         end
                     else
                         Logger.debug("Receiver socket timeout")
-                        -- Timeout means no client connected yet; keep listening.
                         if state.running then
                             socket:reconnect()
                         end
@@ -376,22 +370,30 @@ function SocketBridge.start()
 
             while state.running do
                 LrTasks.sleep(0.2)
+
+                if state.needsRestart and state.running and not state.shuttingDown then
+                    Logger.info("Restarting bridge from main loop")
+                    restartAfter = true
+                    state.needsRestart = false
+                    state.running = false
+                end
             end
 
             if state.senderSocket then
-                pcall(function()
-                    state.senderSocket:close()
-                end)
+                pcall(function() state.senderSocket:close() end)
             end
             if state.receiverSocket then
-                pcall(function()
-                    state.receiverSocket:close()
-                end)
+                pcall(function() state.receiverSocket:close() end)
             end
 
             cleanupPortFile()
             Logger.info("Socket bridge async loop ended")
         end)
+
+        if restartAfter and not state.shuttingDown then
+            LrTasks.sleep(0.5)
+            SocketBridge.start()
+        end
     end)
 end
 
@@ -401,19 +403,16 @@ function SocketBridge.stop()
     end
 
     Logger.info("Stopping Lightroom MCP socket bridge")
+    state.shuttingDown = true
     state.running = false
-    state.needsRestart = false  -- Cancel any pending restart
+    state.needsRestart = false
 
     if state.senderSocket then
-        pcall(function()
-            state.senderSocket:close()
-        end)
+        pcall(function() state.senderSocket:close() end)
     end
 
     if state.receiverSocket then
-        pcall(function()
-            state.receiverSocket:close()
-        end)
+        pcall(function() state.receiverSocket:close() end)
     end
 
     cleanupPortFile()
@@ -427,7 +426,7 @@ function SocketBridge.status()
         sender_port = state.senderPort,
         receiver_port = state.receiverPort,
         port_file = PORT_FILE,
-        needs_restart = state.needsRestart,  -- NEW: Include restart flag
+        needs_restart = state.needsRestart,
     }
 end
 

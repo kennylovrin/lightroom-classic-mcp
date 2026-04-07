@@ -8,7 +8,6 @@ return {
     LrInitPlugin = "PluginInit.lua",
     LrForceInitPlugin = true,
     LrShutdownPlugin = "PluginShutdown.lua",
-    LrShutdownApp = "PluginShutdown.lua",
 
     LrExportMenuItems = {
         {
