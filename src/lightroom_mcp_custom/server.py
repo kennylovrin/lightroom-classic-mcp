@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .bridge import AsyncLightroomBridge, BridgeCommandError, BridgeConnectionError
 from .validators import (
+    validate_batch_metadata_entries,
     validate_develop_settings,
     validate_local_ids,
     validate_pick_status,
@@ -697,6 +698,32 @@ async def remove_keywords(keywords: list[str], local_ids: list[int] | None = Non
     if ids:
         payload["local_ids"] = ids
     return await _call("metadata.remove_keywords", payload)
+
+
+@mcp.tool()
+async def batch_set_metadata(
+    entries: list[dict[str, Any]],
+    stop_on_error: bool = False,
+) -> dict[str, Any]:
+    """Set per-photo captions and/or keywords in a single batch call.
+
+    Each entry targets specific photos with its own caption and/or keywords.
+    All writes happen in one Lightroom transaction (single undo step).
+
+    entries: list of dicts, each with:
+      - local_ids (list[int], required): target photo IDs
+      - caption (str, optional): caption to set
+      - keywords (list[str], optional): keywords to add (supports "A > B > C" hierarchy)
+      At least one of caption or keywords is required per entry.
+
+    stop_on_error: if True, skip remaining entries after first failure.
+    """
+    validated = validate_batch_metadata_entries(entries)
+    payload: dict[str, Any] = {
+        "entries": validated,
+        "stop_on_error": bool(stop_on_error),
+    }
+    return await _call("metadata.batch_set_metadata", payload)
 
 
 # ── Mask / Local Adjustment Tools ──────────────────────────────────

@@ -141,3 +141,46 @@ def validate_pick_status(status: int) -> int:
     if value not in (-1, 0, 1):
         raise ValueError("pick_status must be -1 (reject), 0 (unflag), or 1 (pick)")
     return value
+
+
+def validate_batch_metadata_entries(
+    entries: list[dict],
+) -> list[dict]:
+    """Validate and normalize entries for batch_set_metadata."""
+    if not isinstance(entries, list):
+        raise TypeError("entries must be a list")
+    if not entries:
+        raise ValueError("entries cannot be empty")
+
+    validated: list[dict] = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise TypeError(f"entry {i}: must be an object")
+
+        raw_ids = entry.get("local_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise ValueError(f"entry {i}: local_ids must be a non-empty list")
+
+        ids = validate_local_ids(raw_ids)
+        if ids is None:
+            raise ValueError(f"entry {i}: local_ids must be a non-empty list")
+
+        caption = entry.get("caption")
+        keywords = entry.get("keywords")
+
+        if caption is None and keywords is None:
+            raise ValueError(f"entry {i}: at least one of caption or keywords is required")
+
+        out: dict = {"local_ids": ids}
+
+        if caption is not None:
+            out["caption"] = str(caption)
+
+        if keywords is not None:
+            if not isinstance(keywords, list) or not keywords:
+                raise ValueError(f"entry {i}: keywords must be a non-empty list")
+            out["keywords"] = [str(k) for k in keywords]
+
+        validated.append(out)
+
+    return validated

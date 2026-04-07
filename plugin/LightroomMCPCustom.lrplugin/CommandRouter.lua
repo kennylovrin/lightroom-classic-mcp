@@ -76,6 +76,7 @@ register("metadata.set_caption", MetadataActions.setCaption)
 register("metadata.get_keywords", MetadataActions.getKeywords)
 register("metadata.add_keywords", MetadataActions.addKeywords)
 register("metadata.remove_keywords", MetadataActions.removeKeywords)
+register("metadata.batch_set_metadata", MetadataActions.batchSetMetadata)
 
 register("masks.select_tool", MaskActions.selectTool)
 register("masks.create_ai_mask", MaskActions.createAIMask)
