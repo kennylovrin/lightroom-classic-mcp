@@ -1,4 +1,5 @@
 local ActionUtils = require "ActionUtils"
+local LrDate = import "LrDate"
 
 local CatalogActions = {}
 
@@ -135,7 +136,7 @@ function CatalogActions.searchPhotos(params)
             if not dominated and (dateFrom or dateTo) then
                 local dt = photo:getRawMetadata("dateTimeOriginal")
                 if dt then
-                    local dateStr = os.date("%Y-%m-%d", dt)
+                    local dateStr = LrDate.timeToIsoDate(dt)
                     if dateFrom and dateStr < dateFrom then dominated = true end
                     if dateTo and dateStr > dateTo then dominated = true end
                 else
