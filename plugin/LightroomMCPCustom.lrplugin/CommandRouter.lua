@@ -73,6 +73,7 @@ register("metadata.set_label", MetadataActions.setLabel)
 register("metadata.set_pick_status", MetadataActions.setPickStatus)
 register("metadata.set_title", MetadataActions.setTitle)
 register("metadata.set_caption", MetadataActions.setCaption)
+register("metadata.get_keywords", MetadataActions.getKeywords)
 register("metadata.add_keywords", MetadataActions.addKeywords)
 register("metadata.remove_keywords", MetadataActions.removeKeywords)
 

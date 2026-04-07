@@ -666,6 +666,16 @@ async def set_caption(caption: str, local_ids: list[int] | None = None) -> dict[
 
 
 @mcp.tool()
+async def get_keywords(local_ids: list[int] | None = None) -> dict[str, Any]:
+    """Get keywords assigned to selected photos or specific photos by local_ids."""
+    payload: dict[str, Any] = {}
+    ids = validate_local_ids(local_ids)
+    if ids:
+        payload["local_ids"] = ids
+    return await _call("metadata.get_keywords", payload)
+
+
+@mcp.tool()
 async def add_keywords(keywords: list[str], local_ids: list[int] | None = None) -> dict[str, Any]:
     """Add keywords (supports hierarchical format: A > B > C)."""
     if not keywords:
