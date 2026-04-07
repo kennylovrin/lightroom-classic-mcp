@@ -181,6 +181,76 @@ function MetadataActions.removeKeywords(params)
     }
 end
 
+function MetadataActions.batchSetMetadata(params)
+    if not params or type(params.entries) ~= "table" or #params.entries == 0 then
+        error("entries list is required")
+    end
+
+    local catalog = ActionUtils.getCatalog()
+    local results = {}
+    local succeeded = 0
+    local failed = 0
+    local stopOnError = params.stop_on_error or false
+    local stopped = false
+
+    -- Phase 1: resolve all photos upfront
+    local resolved = {}
+    for i, entry in ipairs(params.entries) do
+        if stopped then
+            results[#results + 1] = { index = i - 1, success = false, error = "Skipped (stop_on_error)" }
+            failed = failed + 1
+        else
+            local photos = ActionUtils.resolvePhotos(entry)
+            if photos and #photos > 0 then
+                resolved[i] = photos
+            else
+                failed = failed + 1
+                results[#results + 1] = { index = i - 1, success = false, error = "No photos found for local_ids" }
+                if stopOnError then
+                    stopped = true
+                end
+            end
+        end
+    end
+
+    -- Phase 2: single write transaction for all resolved entries
+    catalog:withWriteAccessDo("MCP Batch Set Metadata", function()
+        for i, entry in ipairs(params.entries) do
+            if resolved[i] then
+                local photos = resolved[i]
+
+                if entry.caption then
+                    for _, photo in ipairs(photos) do
+                        photo:setRawMetadata("caption", tostring(entry.caption))
+                    end
+                end
+
+                if entry.keywords and type(entry.keywords) == "table" then
+                    for _, keywordPath in ipairs(entry.keywords) do
+                        local kw = ensureKeywordPath(catalog, tostring(keywordPath))
+                        if kw then
+                            for _, photo in ipairs(photos) do
+                                photo:addKeyword(kw)
+                            end
+                        end
+                    end
+                end
+
+                succeeded = succeeded + 1
+                results[#results + 1] = { index = i - 1, success = true, photos_updated = #photos }
+            end
+        end
+    end)
+
+    return {
+        requested = #params.entries,
+        succeeded = succeeded,
+        failed = failed,
+        stop_on_error = stopOnError,
+        results = results,
+    }
+end
+
 function MetadataActions.rotateLeft(params)
     local catalog = ActionUtils.getCatalog()
     local photos = ensurePhotos(params)
