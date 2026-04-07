@@ -842,6 +842,94 @@ async def delete_collection(collection_id: int) -> dict[str, Any]:
     return await _call("catalog.delete_collection", {"collection_id": collection_id})
 
 
+# ── Smart Collection Tools ─────────────────────────────────────────
+
+
+SMART_COLLECTION_RULES_DOC = """
+Rules format: each rule is a dict with criteria, operation, and value.
+
+Combine modes: "intersect" (AND), "union" (OR), "exclude" (NONE).
+
+Common criteria and operations:
+  rating: ==, !=, >, <, >=, <= (value: 0-5)
+  pick: ==, != (value: 1=flagged, 0=unflagged, -1=rejected)
+  captureTime: ==, >, <, in, inLast, notInLast, today, yesterday, thisWeek, thisMonth, thisYear
+    Date values: "YYYY-MM-DD". For inLast/notInLast: value=number, value_units="days"|"weeks"|"months"|"years"
+  keywords: any, all, words, noneOf, ==, !=, empty, notEmpty (value: string)
+  filename, title, caption: any, all, beginsWith, endsWith, ==, != (value: string)
+  camera: ==, != (value: string, exact model name)
+  lens: ==, != (value: string, exact lens name)
+  labelColor: ==, != (value: 1=red, 2=yellow, 3=green, 4=blue, 5=purple)
+  fileFormat: ==, != (value: "DNG", "RAW", "JPG", "TIFF", "PSD", "VIDEO")
+  treatment: ==, != (value: "grayscale", "color")
+  hasGPSData, hasAdjustments: isTrue, isFalse
+  isoSpeedRating: ==, !=, >, <, >=, <=, in (value: number)
+
+Example rules:
+  [{"criteria": "rating", "operation": ">=", "value": 3}]
+  [{"criteria": "captureTime", "operation": "inLast", "value": 30, "value_units": "days"}]
+  [{"criteria": "keywords", "operation": "any", "value": "landscape"}]
+"""
+
+
+@mcp.tool()
+async def create_smart_collection(
+    name: str,
+    rules: list[dict[str, Any]],
+    combine: str = "intersect",
+    parent_id: int | None = None,
+) -> dict[str, Any]:
+    f"""Create a smart collection with search rules.
+    {SMART_COLLECTION_RULES_DOC}
+    Args:
+        name: Collection name.
+        rules: Array of search criteria dicts.
+        combine: How to combine rules - "intersect" (AND), "union" (OR), or "exclude" (NONE).
+        parent_id: Optional parent collection set ID.
+    """
+    if not name:
+        raise ValueError("name is required")
+    if not rules:
+        raise ValueError("rules are required")
+    payload: dict[str, Any] = {"name": name, "rules": rules, "combine": combine}
+    if parent_id is not None:
+        payload["parent_id"] = parent_id
+    return await _call("catalog.create_smart_collection", payload)
+
+
+@mcp.tool()
+async def get_smart_collection_rules(collection_id: int) -> dict[str, Any]:
+    """Get the search rules of a smart collection.
+
+    Args:
+        collection_id: The local ID of the smart collection.
+    """
+    return await _call(
+        "catalog.get_smart_collection_rules", {"collection_id": collection_id}
+    )
+
+
+@mcp.tool()
+async def update_smart_collection(
+    collection_id: int,
+    rules: list[dict[str, Any]],
+    combine: str = "intersect",
+) -> dict[str, Any]:
+    f"""Update the search rules of a smart collection.
+    {SMART_COLLECTION_RULES_DOC}
+    Args:
+        collection_id: The local ID of the smart collection.
+        rules: New array of search criteria dicts (replaces all existing rules).
+        combine: How to combine rules - "intersect" (AND), "union" (OR), or "exclude" (NONE).
+    """
+    if not rules:
+        raise ValueError("rules are required")
+    return await _call(
+        "catalog.update_smart_collection",
+        {"collection_id": collection_id, "rules": rules, "combine": combine},
+    )
+
+
 # ── Virtual Copy / Rotation / Preset Tools ─────────────────────────
 
 
