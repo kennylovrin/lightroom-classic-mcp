@@ -197,7 +197,7 @@ function MetadataActions.batchSetMetadata(params)
     local resolved = {}
     for i, entry in ipairs(params.entries) do
         if stopped then
-            results[#results + 1] = { index = i - 1, success = false, error = "Skipped (stop_on_error)" }
+            results[i] = { index = i - 1, success = false, error = "Skipped (stop_on_error)" }
             failed = failed + 1
         else
             local photos = ActionUtils.resolvePhotos(entry)
@@ -205,7 +205,7 @@ function MetadataActions.batchSetMetadata(params)
                 resolved[i] = photos
             else
                 failed = failed + 1
-                results[#results + 1] = { index = i - 1, success = false, error = "No photos found for local_ids" }
+                results[i] = { index = i - 1, success = false, error = "No photos found for local_ids" }
                 if stopOnError then
                     stopped = true
                 end
@@ -213,7 +213,9 @@ function MetadataActions.batchSetMetadata(params)
         end
     end
 
-    -- Phase 2: single write transaction for all resolved entries
+    -- Phase 2: single write transaction for all resolved entries.
+    -- Entries not in resolved{} (failed or skipped in Phase 1) already have
+    -- their result recorded and are silently skipped here.
     catalog:withWriteAccessDo("MCP Batch Set Metadata", function()
         for i, entry in ipairs(params.entries) do
             if resolved[i] then
@@ -227,6 +229,8 @@ function MetadataActions.batchSetMetadata(params)
 
                 if entry.keywords and type(entry.keywords) == "table" then
                     for _, keywordPath in ipairs(entry.keywords) do
+                        -- Note: ensureKeywordPath calls catalog:createKeyword inside the write
+                        -- transaction. This matches the existing addKeywords handler pattern.
                         local kw = ensureKeywordPath(catalog, tostring(keywordPath))
                         if kw then
                             for _, photo in ipairs(photos) do
@@ -237,7 +241,7 @@ function MetadataActions.batchSetMetadata(params)
                 end
 
                 succeeded = succeeded + 1
-                results[#results + 1] = { index = i - 1, success = true, photos_updated = #photos }
+                results[i] = { index = i - 1, success = true, photos_updated = #photos }
             end
         end
     end)
