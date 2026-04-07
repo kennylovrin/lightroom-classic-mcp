@@ -1,24 +1,13 @@
-local LrTasks = import "LrTasks"
-
 local ActionUtils = require "ActionUtils"
 
 local CollectionActions = {}
 
 local function collectionToSummary(collection)
-    local ok, result = pcall(function()
-        return {
-            local_id = collection.localIdentifier,
-            name = collection:getName(),
-            is_smart = collection:isSmartCollection(),
-            photo_count = collection:getPhotos() and #collection:getPhotos() or 0,
-        }
-    end)
-    if ok then
-        return result
-    end
     return {
         local_id = collection.localIdentifier,
-        name = "(error reading collection)",
+        name = collection:getName(),
+        is_smart = collection:isSmartCollection(),
+        photo_count = #collection:getPhotos(),
     }
 end
 
@@ -30,22 +19,16 @@ local function collectChildCollections(parent, depth)
 
     local out = {}
 
-    local okCollections, collections = pcall(function()
-        return parent:getChildCollections()
-    end)
-    if okCollections and collections then
-        for _, collection in ipairs(collections) do
-            local summary = collectionToSummary(collection)
-            summary.type = "collection"
-            summary.depth = depth
-            out[#out + 1] = summary
-        end
+    local collections = parent:getChildCollections()
+    for _, collection in ipairs(collections) do
+        local summary = collectionToSummary(collection)
+        summary.type = "collection"
+        summary.depth = depth
+        out[#out + 1] = summary
     end
 
-    local okSets, sets = pcall(function()
-        return parent:getChildCollectionSets()
-    end)
-    if okSets and sets then
+    local sets = parent:getChildCollectionSets()
+    if sets then
         for _, collectionSet in ipairs(sets) do
             local setEntry = {
                 local_id = collectionSet.localIdentifier,
